@@ -1,0 +1,1496 @@
+
+
+DATA LOCATION
+--Local File System-- linux
+/sollers/sollers/big_data_eng/airtraffic_control/datasets/dimensions
+-rwxrwxrwx 1 hdpadmin admin_rw 118407 Jan 15 11:14 airports_2.csv
+-rwxrwxrwx 1 hdpadmin admin_rw 442087 Jan 15 11:04 plane-data.csv
+
+
+mysql://34.238.29.1:3306/Airline 
+`Airline`.`airline_2003`, 
+`Airline`.`airline_2004`, 
+`Airline`.`airline_2005`, 
+`Airline`.`airline_2008`, 
+`Airline`.`Airports_1`, 
+`Airline`.`carriers`
+
+
+
+
+/sollers/sollers/big_data_eng/airtraffic_control/datasets/facts
+-rwxrwxrwx 1 hdpadmin admin_rw 672068096 Dec  9  2014 2006.csv
+-rwxrwxrwx 1 hdpadmin admin_rw 702878193 Aug 22  2014 2007.csv
+--Database-- mysql
+
+database command in hdfs
+hdfs dfs -ls /user/hive/warehouse/steven_db.db
+
+
+
+
+
+
+set parquet.compression = snappy;
+
+set hive.exec.dynamic.partition=true;
+
+set hive.exec.dynamic.partition.mode=nonstrict;
+
+set hive.exec.max.dynamic.partitions.pernode=1000;
+
+set hive.enfore.bucketing = true;
+
+set hive.exec.compress.output=true;
+
+set mapred.output.compression.codec=org.apache.hadoop.io.compress.SnappyCodec;
+
+set mapred.output.compression.type=BLOCK;
+
+---------Allow admin access to specified directory--------------
+hdfs dfs -chmod 775 /data/steven_dir/project/;
+
+
+
+
+
+
+
+--------------import into hdfs table location-----------------
+sqoop import --connect jdbc:mysql://54.165.245.120/Airline \
+--username temp \
+--password temp \
+--table airline_2003 \
+--target-dir  /data/steven_dir/project/airtraffic_2003_2004/  \
+--m 1
+
+-------------import into same hdfs directory as 2003 using incremental load----------------
+sqoop import --connect jdbc:mysql://54.165.245.120/Airline \
+--username temp \
+--password temp \
+--table airline_2004 \
+--target-dir  /data/steven_dir/project/airtraffic_2003_2004/  \
+--m 1 \
+--fields-terminated-by ',' \
+--incremental append \
+--check-column Year \
+--last-value 2003 
+
+------external 2003_2004 data-----
+CREATE EXTERNAL TABLE airtraffic_2003_2004 (
+`Year` int,
+`Month` String,
+`DayofMonth` int,
+`DayOfWeek` int, 
+`DepTime` int, 
+`CRSDepTime` int, 
+`ArrTime` int, 
+`CRSArrTime` int,
+`UniqueCarrier` string, 
+`FlightNum` int, 
+`TailNum` string, 
+`ActualElapsedTime` int, 
+`CRSElapsedTime` int, 
+`AirTime` int, 
+`ArrDelay` int, 
+`DepDelay` int, 
+`Origin` string, 
+`Dest` string,
+`Distance` int, 
+`TaxiIn` int, 
+`TaxiOut` int, 
+`Cancelled` string, 
+`CancellationCode` string, 
+`Diverted` string, 
+`CarrierDelay` string, 
+`WeatherDelay` string, 
+`NASDelay` string, 
+`SecurityDelay` string, 
+`LateAircraftDelay` string
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+STORED AS TEXTFILE
+LOCATION '/data/steven_dir/project/airtraffic_2003_2004/';
+
+
+
+
+---------Hive managed partitioned table, parquet file, snappy compression, partitioned by year and month, 15 buckets by day------------
+CREATE TABLE steven_db.airtraffic_control_internal (
+`DayofMonth` int,
+`DayOfWeek` int, 
+`DepTime` int, 
+`CRSDepTime` int, 
+`ArrTime` int, 
+`CRSArrTime` int,
+`UniqueCarrier` string, 
+`FlightNum` int, 
+`TailNum` string, 
+`ActualElapsedTime` int, 
+`CRSElapsedTime` int, 
+`AirTime` int, 
+`ArrDelay` int, 
+`DepDelay` int, 
+`Origin` string, 
+`Dest` string,
+`Distance` int, 
+`TaxiIn` int, 
+`TaxiOut` int, 
+`Cancelled` string, 
+`CancellationCode` string, 
+`Diverted` string, 
+`CarrierDelay` string, 
+`WeatherDelay` string, 
+`NASDelay` string, 
+`SecurityDelay` string, 
+`LateAircraftDelay` string
+)
+PARTITIONED BY (Year int, Month string)
+CLUSTERED BY (DayofMonth) INTO 15 BUCKETS 
+STORED AS PARQUET
+TBLPROPERTIES("orc.compress"="snappy");
+
+
+---------------- Create external table, parquet file, snappy compression, partitioned by year and month, 15 buckets by day--------------
+CREATE EXTERNAL TABLE steven_db.airtraffic_control_external (
+`DayofMonth` int,
+`DayOfWeek` int, 
+`DepTime` int, 
+`CRSDepTime` int, 
+`ArrTime` int, 
+`CRSArrTime` int,
+`UniqueCarrier` string, 
+`FlightNum` int, 
+`TailNum` string, 
+`ActualElapsedTime` int, 
+`CRSElapsedTime` int, 
+`AirTime` int, 
+`ArrDelay` int, 
+`DepDelay` int, 
+`Origin` string, 
+`Dest` string,
+`Distance` int, 
+`TaxiIn` int, 
+`TaxiOut` int, 
+`Cancelled` string, 
+`CancellationCode` string, 
+`Diverted` string, 
+`CarrierDelay` string, 
+`WeatherDelay` string, 
+`NASDelay` string, 
+`SecurityDelay` string, 
+`LateAircraftDelay` string
+)
+PARTITIONED BY (Year int, Month string)
+CLUSTERED BY (DayofMonth) INTO 15 BUCKETS 
+STORED AS PARQUET
+TBLPROPERTIES("orc.compress"="snappy");
+
+
+
+
+--------------------create hbase table-------------------
+CREATE TABLE steven_db.airline_2003hbase (
+rownum int,
+`Year` int,
+`Month` string,
+`DayofMonth` int,
+`DayOfWeek` int, 
+`DepTime` int, 
+`CRSDepTime` int, 
+`ArrTime` int, 
+`CRSArrTime` int,
+`UniqueCarrier` string, 
+`FlightNum` int, 
+`TailNum` string, 
+`ActualElapsedTime` int, 
+`CRSElapsedTime` int, 
+`AirTime` int, 
+`ArrDelay` int, 
+`DepDelay` int, 
+`Origin` string, 
+`Dest` string,
+`Distance` int, 
+`TaxiIn` int, 
+`TaxiOut` int, 
+`Cancelled` string, 
+`CancellationCode` string, 
+`Diverted` string, 
+`CarrierDelay` string, 
+`WeatherDelay` string, 
+`NASDelay` string, 
+`SecurityDelay` string, 
+`LateAircraftDelay` string
+)
+ROW FORMAT SERDE 
+'org.apache.hadoop.hive.hbase.HBaseSerDe'
+STORED BY 
+'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
+WITH SERDEPROPERTIES (
+'hbase.columns.mapping'=':key,CF_TIME_AND_DISTANCE:Year,CF_TIME_AND_DISTANCE:Month, CF_TIME_AND_DISTANCE:DayofMonth, CF_TIME_AND_DISTANCE:DayOfWeek, CF_TIME_AND_DISTANCE:DepTime, CF_TIME_AND_DISTANCE:CRSDepTime,  CF_TIME_AND_DISTANCE:ArrTime, CF_TIME_AND_DISTANCE:CRSArrTime, CF_AIRLINE:UniqueCarrier, CF_AIRLINE:FlightNum, CF_AIRLINE:TailNum, CF_TIME_AND_DISTANCE:ActualElapsedTime, CF_TIME_AND_DISTANCE:CRSElapsedTime, CF_TIME_AND_DISTANCE:AirTime, CF_TIME_AND_DISTANCE:ArrDelay, CF_TIME_AND_DISTANCE:DepDelay, CF_AIRLINE:Origin, CF_AIRLINE:Dest, CF_TIME_AND_DISTANCE:Distance, CF_TIME_AND_DISTANCE:TaxiIn, CF_TIME_AND_DISTANCE:TaxiOut, CF_WEATHER:Cancelled, CF_WEATHER:CancellationCode, CF_WEATHER:Diverted, CF_TIME_AND_DISTANCE:CarrierDelay, CF_TIME_AND_DISTANCE:WeatherDelay, CF_TIME_AND_DISTANCE:NASDelay, CF_TIME_AND_DISTANCE:SecurityDelay, CF_TIME_AND_DISTANCE:LateAircraftDelay'
+,'serialization.format'='1')
+TBLPROPERTIES (
+'hbase.table.name'='airline_2003hbase')
+;
+
+
+
+
+-------------------load 2003 data into new hbase table with column families of  CF_AIRLINE, CF_TIME_AND_DISTANCE, CF_WEATHER-------------
+create_namespace 'airline_steven'
+
+hbase(main):004:0> create 'airline_steven:airline_2003hbase','CF_AIRLINE','CF_TIME_AND_DISTANCE','CF_WEATHER'
+
+Hbase::Table - airline_steven:airline_2003hbase
+
+create 'airline_steven:airline_2003hbase','CF_AIRLINE','CF_TIME_AND_DISTANCE','CF_WEATHER'
+
+--sqoop load in CF_AIRLINE column family
+
+sqoop import --connect jdbc:mysql://54.165.245.120/Airline \
+--username temp \
+--password temp \
+--query "select UniqueCarrier, Flightnum, TailNum,Origin,Dest,TaxiIn, TaxiOut, Cancelled, CancellationCode, Diverted from airline_2003 WHERE Year=2003 and \$CONDITIONS" \
+--split-by UniqueCarrier \
+--hbase-table airline_steven:airline_2003hbase \
+--column-family CF_AIRLINE \
+--hbase-row-key TailNum,FlightNum \
+--m 1
+
+--sqoop load in CF_TIME_AND_DISTANCE column family
+
+sqoop import --connect jdbc:mysql://54.165.245.120/Airline \
+--username temp \
+--password temp \
+--query "select TailNum, FlightNum, Year,Month,DayofMonth,DayOfWeek,DepTime,CRSDepTime,ArrTime,CRSArrTime,ActualElapsedTime,CRSElapsedTime,AirTime,Distance from airline_2003 WHERE Year=2003 and \$CONDITIONS" \
+--split-by DayofMonth \
+--hbase-table airline_steven:airline_2003hbase \
+--column-family CF_TIME_AND_DISTANCE \
+--hbase-row-key TailNum,FlightNum \
+--m 1
+
+--sqoop load in CF_WEATHER column family
+
+sqoop import --connect jdbc:mysql://54.165.245.120/Airline \
+--username temp \
+--password temp \
+--query "select TailNum, FlightNum, WeatherDelay, CarrierDelay,SecurityDelay,LateAircraftDelay,NASDelay,ArrDelay,DepDelay from airline_2003 WHERE Year=2003 and \$CONDITIONS" \
+--split-by TailNum \
+--hbase-table airline_steven:airline_2003hbase \
+--column-family CF_WEATHER \
+--hbase-row-key TailNum,FlightNum \
+--m 1
+
+
+
+
+
+
+
+CREATE TABLE steven_db.airtraffic_control_hbase (
+`Year` int,
+`Month` string,
+`DayofMonth` int,
+`DayOfWeek` int, 
+`DepTime` int, 
+`CRSDepTime` int, 
+`ArrTime` int, 
+`CRSArrTime` int,
+`UniqueCarrier` string, 
+`FlightNum` int, 
+`TailNum` string, 
+`ActualElapsedTime` int, 
+`CRSElapsedTime` int, 
+`AirTime` int, 
+`ArrDelay` int, 
+`DepDelay` int, 
+`Origin` string, 
+`Dest` string,
+`Distance` int, 
+`TaxiIn` int, 
+`TaxiOut` int, 
+`Cancelled` string, 
+`CancellationCode` string, 
+`Diverted` string, 
+`CarrierDelay` string, 
+`WeatherDelay` string, 
+`NASDelay` string, 
+`SecurityDelay` string, 
+`LateAircraftDelay` string
+)
+ROW FORMAT SERDE 
+'org.apache.hadoop.hive.hbase.HBaseSerDe'
+STORED BY 
+'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
+WITH SERDEPROPERTIES (
+'hbase.columns.mapping'=':key,,CF_TIME_AND_DISTANCE:Month, CF_TIME_AND_DISTANCE:DayofMonth, CF_TIME_AND_DISTANCE:DayOfWeek, CF_TIME_AND_DISTANCE:DepTime, CF_TIME_AND_DISTANCE:CRSDepTime,  CF_TIME_AND_DISTANCE:ArrTime, CF_TIME_AND_DISTANCE:CRSArrTime, CF_AIRLINE:UniqueCarrier, CF_AIRLINE:FlightNum, CF_AIRLINE:TailNum, CF_TIME_AND_DISTANCE:ActualElapsedTime, CF_TIME_AND_DISTANCE:CRSElapsedTime, CF_TIME_AND_DISTANCE:AirTime, CF_TIME_AND_DISTANCE:ArrDelay, CF_TIME_AND_DISTANCE:DepDelay, CF_AIRLINE:Origin, CF_AIRLINE:Dest, CF_TIME_AND_DISTANCE:Distance, CF_TIME_AND_DISTANCE:TaxiIn, CF_TIME_AND_DISTANCE:TaxiOut, CF_WEATHER:Cancelled, CF_WEATHER:CancellationCode, CF_WEATHER:Diverted, CF_TIME_AND_DISTANCE:CarrierDelay, CF_TIME_AND_DISTANCE:WeatherDelay, CF_TIME_AND_DISTANCE:NASDelay, CF_TIME_AND_DISTANCE:SecurityDelay, CF_TIME_AND_DISTANCE:LateAircraftDelay'
+,'serialization.format'='1')
+TBLPROPERTIES (
+'hbase.table.name'='airtraffic_control_hbase')
+;
+
+
+
+
+
+
+
+
+
+
+
+
+------------------INSERT OVERWRITE TABLE-------------------------
+set hive.exec.dynamic.partition=true;
+set hive.exec.dynamic.partition.mode=nonstrict;
+insert into table steven_db.airtraffic_control_2003hbase select * FROM airtraffic_control_2003_2004 where year = '2003';
+insert into table steven_db.airtraffic_control_2004hbase select * FROM airtraffic_2003_2004 where year = '2004';
+INSERT OVERWRITE TABLE steven_db.airtraffic_control_internal Partition(Year='2006')SELECT * FROM airtraffic_control_2006;
+
+INSERT OVERWRITE TABLE steven_db.airtraffic_control_external Partition(Year,month) SELECT * FROM airtraffic_control_2006;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+------------------import to hdfs and create hive table using sqoop-----------------------------
+sqoop import --connect jdbc:mysql://54.165.245.120/Airline \
+--username temp \
+--password temp \
+--table airline_2005 \
+--m 1 \
+--delete-target-dir \
+--target-dir /data/steven_dir/project/airtraffic_control/2005 \
+--hive-import \
+--create-hive-table \
+--hive-table steven_db.airtraffic_control_2005 \
+--split-by Year;
+
+
+
+
+---------------import to hdfs and create hive table using sqoop----------------------
+sqoop import --connect jdbc:mysql://54.165.245.120/Airline \
+--username temp \
+--password temp \
+--table airline_2005 \
+--m 1 \
+--target-dir /data/steven_dir/project/airtraffic_control/2005;
+
+
+
+
+
+
+
+
+
+
+
+
+
+///////////////////////////////////////////////
+
+
+
+
+
+
+-------------------load 2003 data into new hbase table with column families of  CF_AIRLINE, CF_TIME_AND_DISTANCE, CF_WEATHER-------------
+create 'airline_steven:airline_2003hbase','CF_AIRLINE','CF_TIME_AND_DISTANCE','CF_WEATHER'
+
+--sqoop load in CF_AIRLINE column family
+
+sqoop import --connect jdbc:mysql://54.165.245.120/Airline \
+--username temp \
+--password temp \
+--query "select UniqueCarrier, Flightum, TailNum,Origin,Dest,TaxiIn, TaxiOut, Cancelled, CancellationCode, Diverted from airtraffic_control WHERE Year=2003 and \$CONDITIONS" \
+--split-by UniqueCarrier \
+--hbase-table airline_steven:airline_2003hbase \
+--column-family CF_AIRLINE \
+--hbase-row-key TailNum, FlightNum \
+--m 1
+
+--sqoop load in CF_TIME_AND_DISTANCE column family
+
+sqoop import --connect jdbc:mysql://54.165.245.120/Airline \
+--username temp \
+--password temp \
+--query "select TailNum, FlightNum, Year,Month,DayofMonth,DayOfWeek,DepTime,CRSDepTime,ArrTime,CRSArrTime,ActualElapsedTime,CRSElapsedTime,AirTime,Distance from airtraffic_control WHERE Year=2003 and \$CONDITIONS" \
+--split-by DayofMonth \
+--hbase-table airline_steven:airline_2003hbase \
+--column-family CF_TIME_AND_DISTANCE \
+--hbase-row-key TailNum, FlightNum \
+--m 1
+
+--sqoop load in CF_WEATHER column family
+
+sqoop import --connect jdbc:mysql://54.165.245.120/Airline \
+--username temp \
+--password temp \
+--query "select TailNum, FlightNum, WeatherDelay, CarrierDelay,SecurityDelay,LateAircraftDelay,NASDelay,ArrDelay,DepDelay from airtraffic_control WHERE Year=2003 and \$CONDITIONS" \
+--split-by TailNum \
+--hbase-table airline_steven:airline_2003hbase \
+--column-family CF_WEATHER \
+--hbase-row-key TailNum, FlightNum \
+--m 1
+
+
+
+
+
+
+----------------import to hdfs and create hive table using sqoop------------------
+sqoop import --connect jdbc:mysql://54.165.245.120/Airline \
+--username temp \
+--password temp \
+--table Airports_1 \
+--m 1 \
+--target-dir /data/steven_dir/project/airtraffic_control/Airports_1 \
+--hive-import \
+--create-hive-table \
+--hive-table steven_db.Airports_1
+
+
+----------------import to hdfs and create hive table using sqoop------------------
+sqoop import --connect jdbc:mysql://54.165.245.120/Airline \
+--username temp \
+--password temp \
+--table carriers \
+--m 1 \
+--delete-target-dir \
+--target-dir /data/steven_dir/project/airtraffic_control/carriers \
+--hive-import \
+--create-hive-table \
+--hive-table steven_db.carriers
+
+
+
+-----------------Create staging table for 2006,2007--------------
+CREATE TABLE steven_db.airtraffic_control_2007 (
+`Year` int,
+`Month` String,
+`DayofMonth` int,
+`DayOfWeek` int, 
+`DepTime` int, 
+`CRSDepTime` int, 
+`ArrTime` int, 
+`CRSArrTime` int,
+`UniqueCarrier` string, 
+`FlightNum` int, 
+`TailNum` string, 
+`ActualElapsedTime` int, 
+`CRSElapsedTime` int, 
+`AirTime` int, 
+`ArrDelay` int, 
+`DepDelay` int, 
+`Origin` string, 
+`Dest` string,
+`Distance` int, 
+`TaxiIn` int, 
+`TaxiOut` int, 
+`Cancelled` string, 
+`CancellationCode` string, 
+`Diverted` string, 
+`CarrierDelay` string, 
+`WeatherDelay` string, 
+`NASDelay` string, 
+`SecurityDelay` string, 
+`LateAircraftDelay` string
+)
+ROW FORMAT DELIMITED
+
+FIELDS TERMINATED BY ','
+
+LINES TERMINATED BY '\n'
+
+STORED AS textfile
+
+LOCATION '/data/steven_dir/project/airline_2007'
+
+TBLPROPERTIES ("skip.header.line.count"="1");
+
+
+
+CREATE TABLE steven_db.airtraffic_control_2006 (
+`Year` int,
+`Month` String,
+`DayofMonth` int,
+`DayOfWeek` int, 
+`DepTime` int, 
+`CRSDepTime` int, 
+`ArrTime` int, 
+`CRSArrTime` int,
+`UniqueCarrier` string, 
+`FlightNum` int, 
+`TailNum` string, 
+`ActualElapsedTime` int, 
+`CRSElapsedTime` int, 
+`AirTime` int, 
+`ArrDelay` int, 
+`DepDelay` int, 
+`Origin` string, 
+`Dest` string,
+`Distance` int, 
+`TaxiIn` int, 
+`TaxiOut` int, 
+`Cancelled` string, 
+`CancellationCode` string, 
+`Diverted` string, 
+`CarrierDelay` string, 
+`WeatherDelay` string, 
+`NASDelay` string, 
+`SecurityDelay` string, 
+`LateAircraftDelay` string
+)
+ROW FORMAT DELIMITED
+
+FIELDS TERMINATED BY ','
+
+LINES TERMINATED BY '\n'
+
+STORED AS textfile
+
+LOCATION '/data/steven_dir/project/airline_2006'
+
+TBLPROPERTIES ("skip.header.line.count"="1");
+
+
+------------Build external hive table for Plane_data, load using LOAD DATA LOCAL PATH
+CREATE EXTERNAL TABLE steven_db.airtraffic_control_Plane_Data (
+`tailnum`string ,
+`type` string,
+`manufacturer` string ,
+`issue_date` int,
+`model` string,
+`status` string,
+`aircraft_type` string,
+`engine_type` string,
+`year` int
+)
+ROW FORMAT DELIMITED
+
+FIELDS TERMINATED BY ','
+
+LINES TERMINATED BY '\n'
+
+STORED AS textfile
+
+LOCATION '/data/steven_dir/project/Plane_Data'
+
+TBLPROPERTIES ("skip.header.line.count"="1");
+
+
+
+
+
+------------------Move from local file system to hdfs ------------------------
+
+ hadoop fs -put /sollers/sollers/big_data_eng/airtraffic_control/datasets/dimensions/airports_2.csv /data/steven_dir/project/airtraffic_control/airports_2
+
+sqoop import --connect jdbc:mysql://54.165.245.120/Airline --username temp --password temp --table airports_2.csv --m 1 --target-dir /data/steven_dir/project/airtraffic_control/airports_2 --hive-import --create-hive-table --hive-table steven_db.airports_2
+
+
+----------------------Load data local inpath-----------------
+LOAD DATA LOCAL INPATH '/sollers/sollers/big_data_eng/airtraffic_control/datasets/dimensions/airports_2.csv' INTO TABLE steven_db.airports_2;
+
+LOAD DATA LOCAL INPATH '/sollers/sollers/big_data_eng/airtraffic_control/datasets/dimensions/plane-data.csv' INTO TABLE steven_db.airtraffic_control_plane_data;
+
+LOAD DATA LOCAL INPATH '/sollers/sollers/big_data_eng/airtraffic_control/datasets/facts/2006.csv' INTO TABLE steven_db.airtraffic_control_2006;
+
+LOAD DATA LOCAL INPATH '/sollers/sollers/big_data_eng/airtraffic_control/datasets/facts/2007.csv' INTO TABLE steven_db.airtraffic_control_2007;
+
+
+
+
+
+-----------------load 2006 and 2007 data into single hive external table-----------
+insert into steven_db.airtraffic_control_external partition(Year, Month)
+select DayofMonth, 
+DayOfWeek, 
+DepTime, 
+CRSDepTime,
+ArrTime,
+CRSArrTime, 
+UniqueCarrier,
+FlightNum,
+TailNum,
+ActualElapsedTime, 
+CRSElapsedTime,
+AirTime, 
+ArrDelay,
+DepDelay, 
+Origin,
+Dest, 
+Distance,
+TaxiIn, 
+TaxiOut,
+Cancelled, 
+CancellationCode,
+Diverted,
+CarrierDelay, 
+WeatherDelay, 
+NASDelay,
+SecurityDelay, 
+LateAircraftDelay,
+Year,
+Month
+from steven_db.airtraffic_control_2006 where year ='2006';
+
+
+
+
+
+
+insert into steven_db.airtraffic_control_external partition(Year, Month)
+select DayofMonth, 
+DayOfWeek, 
+DepTime, 
+CRSDepTime,
+ArrTime,
+CRSArrTime, 
+UniqueCarrier,
+FlightNum,
+TailNum,
+ActualElapsedTime, 
+CRSElapsedTime,
+AirTime, 
+ArrDelay,
+DepDelay, 
+Origin,
+Dest, 
+Distance,
+TaxiIn, 
+TaxiOut,
+Cancelled, 
+CancellationCode,
+Diverted,
+CarrierDelay, 
+WeatherDelay, 
+NASDelay,
+SecurityDelay, 
+LateAircraftDelay,
+Year,
+Month
+from steven_db.airtraffic_control_2007 where year ='2007';
+
+
+
+
+
+-------------load 2003 and 2004 data into internal table---------
+insert into steven_db.airtraffic_control_internal partition(Year, Month)
+select DayofMonth, 
+DayOfWeek, 
+DepTime, 
+CRSDepTime,
+ArrTime,
+CRSArrTime, 
+UniqueCarrier,
+FlightNum,
+TailNum,
+ActualElapsedTime, 
+CRSElapsedTime,
+AirTime, 
+ArrDelay,
+DepDelay, 
+Origin,
+Dest, 
+Distance,
+TaxiIn, 
+TaxiOut,
+Cancelled, 
+CancellationCode,
+Diverted,
+CarrierDelay, 
+WeatherDelay, 
+NASDelay,
+SecurityDelay, 
+LateAircraftDelay,
+Year,
+Month
+from steven_db.airtraffic_2003_2004 where year ='2003';
+
+
+insert into steven_db.airtraffic_control_internal partition(Year, Month)
+select DayofMonth, 
+DayOfWeek, 
+DepTime, 
+CRSDepTime,
+ArrTime,
+CRSArrTime, 
+UniqueCarrier,
+FlightNum,
+TailNum,
+ActualElapsedTime, 
+CRSElapsedTime,
+AirTime, 
+ArrDelay,
+DepDelay, 
+Origin,
+Dest, 
+Distance,
+TaxiIn, 
+TaxiOut,
+Cancelled, 
+CancellationCode,
+Diverted,
+CarrierDelay, 
+WeatherDelay, 
+NASDelay,
+SecurityDelay, 
+LateAircraftDelay,
+Year,
+Month
+from steven_db.airtraffic_2003_2004 where year ='2004';
+
+
+
+
+------------2004Hbase table----------
+CREATE TABLE steven_db.airtraffic_control_2004hbase (
+`Year` int,
+`Month` string,
+`DayofMonth` int,
+`DayOfWeek` int, 
+`DepTime` int, 
+`CRSDepTime` int, 
+`ArrTime` int, 
+`CRSArrTime` int,
+`UniqueCarrier` string, 
+`FlightNum` int, 
+`TailNum` string, 
+`ActualElapsedTime` int, 
+`CRSElapsedTime` int, 
+`AirTime` int, 
+`ArrDelay` int, 
+`DepDelay` int, 
+`Origin` string, 
+`Dest` string,
+`Distance` int, 
+`TaxiIn` int, 
+`TaxiOut` int, 
+`Cancelled` string, 
+`CancellationCode` string, 
+`Diverted` string, 
+`CarrierDelay` string, 
+`WeatherDelay` string, 
+`NASDelay` string, 
+`SecurityDelay` string, 
+`LateAircraftDelay` string
+)
+ROW FORMAT SERDE 
+'org.apache.hadoop.hive.hbase.HBaseSerDe'
+STORED BY 
+'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
+WITH SERDEPROPERTIES (
+'hbase.columns.mapping'=':key, CF_TIME_AND_DISTANCE:Month, CF_TIME_AND_DISTANCE:DayofMonth, CF_TIME_AND_DISTANCE:DayOfWeek, CF_TIME_AND_DISTANCE:DepTime, CF_TIME_AND_DISTANCE:CRSDepTime,  CF_TIME_AND_DISTANCE:ArrTime, CF_TIME_AND_DISTANCE:CRSArrTime, CF_AIRLINE:UniqueCarrier, CF_AIRLINE:FlightNum, CF_AIRLINE:TailNum, CF_TIME_AND_DISTANCE:ActualElapsedTime, CF_TIME_AND_DISTANCE:CRSElapsedTime, CF_TIME_AND_DISTANCE:AirTime, CF_TIME_AND_DISTANCE:ArrDelay, CF_TIME_AND_DISTANCE:DepDelay, CF_AIRLINE:Origin, CF_AIRLINE:Dest, CF_TIME_AND_DISTANCE:Distance, CF_TIME_AND_DISTANCE:TaxiIn, CF_TIME_AND_DISTANCE:TaxiOut, CF_WEATHER:Cancelled, CF_WEATHER:CancellationCode, CF_WEATHER:Diverted, CF_TIME_AND_DISTANCE:CarrierDelay, CF_TIME_AND_DISTANCE:WeatherDelay, CF_TIME_AND_DISTANCE:NASDelay, CF_TIME_AND_DISTANCE:SecurityDelay, CF_TIME_AND_DISTANCE:LateAircraftDelay'
+,'serialization.format'='1')
+TBLPROPERTIES (
+'hbase.table.name'='airtraffic_control_2004hbase')
+;
+
+
+
+
+----------------load 2004 data from hive internal table into hbase table using hive---------------
+insert into steven_db.airtraffic_control_2004hbase 
+select DayofMonth, 
+DayOfWeek, 
+DepTime, 
+CRSDepTime,
+ArrTime,
+CRSArrTime, 
+UniqueCarrier,
+FlightNum,
+TailNum,
+ActualElapsedTime, 
+CRSElapsedTime,
+AirTime, 
+ArrDelay,
+DepDelay, 
+Origin,
+Dest, 
+Distance,
+TaxiIn, 
+TaxiOut,
+Cancelled, 
+CancellationCode,
+Diverted,
+CarrierDelay, 
+WeatherDelay, 
+NASDelay,
+SecurityDelay, 
+LateAircraftDelay,
+Year,
+Month
+from steven_db.airtraffic_control_internal where year ='2004';
+
+
+
+
+----------------bulk load 2005 data hdfs-----------------
+hbase org.apache.hadoop.hbase.mapreduce.ImportTsv -Dimporttsv.separator=',' -Dimporttsv.columns="HBASE_ROW_KEY,CF_TIME_AND_DISTANCE:Year,CF_TIME_AND_DISTANCE:Month, CF_TIME_AND_DISTANCE:DayofMonth, CF_TIME_AND_DISTANCE:DayOfWeek, CF_TIME_AND_DISTANCE:DepTime, CF_TIME_AND_DISTANCE:CRSDepTime,  CF_TIME_AND_DISTANCE:ArrTime, CF_TIME_AND_DISTANCE:CRSArrTime, CF_AIRLINE:UniqueCarrier, CF_AIRLINE:FlightNum, CF_AIRLINE:TailNum, CF_TIME_AND_DISTANCE:ActualElapsedTime, CF_TIME_AND_DISTANCE:CRSElapsedTime, CF_TIME_AND_DISTANCE:AirTime, CF_TIME_AND_DISTANCE:ArrDelay, CF_TIME_AND_DISTANCE:DepDelay, CF_AIRLINE:Origin, CF_AIRLINE:Dest, CF_TIME_AND_DISTANCE:Distance, CF_TIME_AND_DISTANCE:TaxiIn, CF_TIME_AND_DISTANCE:TaxiOut, CF_WEATHER:Cancelled, CF_WEATHER:CancellationCode, CF_WEATHER:Diverted, CF_TIME_AND_DISTANCE:CarrierDelay, CF_TIME_AND_DISTANCE:WeatherDelay, CF_TIME_AND_DISTANCE:NASDelay, CF_TIME_AND_DISTANCE:SecurityDelay, CF_TIME_AND_DISTANCE:LateAircraftDelay" steven:airtraffic_control_2005/data/steven_dir/project/airtraffic_control/airtraffic_control_2005/airtraffic_control_2005.csv
+
+
+
+
+
+----------------plane data without duplicates------------------
+CREATE TABLE temp_plane_data AS
+
+SELECT tailnum AS tailnum,
+type AS type,
+
+manufacturer AS manufacturer,
+
+issue_date AS issue_date,
+
+model AS model,
+
+status AS status,
+
+aircraft_type AS aircraft_type,
+
+engine_type AS engine_type,
+
+year AS year,
+
+ROW_NUMBER() OVER (PARTITION BY tailnum ORDER BY issue_date DESC)
+AS row_num
+
+FROM steven_db.airtraffic_control_plane_data;
+
+
+
+
+
+
+--------------create tables no duplicates, null values, code less than 3 bytes----------------
+
+CREATE TABLE plane_data_no_duplicates AS SELECT tailnum, type, manufacturer, issue_date, model, status, aircraft_type, engine_type, year FROM temp_plane_data WHERE row_num = 1 ;
+
+---------------plane data with no null values for manufacturer---------------
+CREATE TABLE plane_data_no_null AS SELECT * from airtraffic_control_plane_data where manufacturer != '';
+
+
+------------carriers data whose code column is less than 3 bytes or characters-------------------
+CREATE TABLE carriers_3bytes AS select * from carriers where LENGTH(carriers.code) < 4;
+
+create table carrier_replace_char as select regexp_replace(description, '/', '-'), code from carriers;
+
+
+
+
+------------------Merge airports 1 and 2 table------------------
+create table airports_1_and_2
+(iata string,
+airport string,
+city string,
+state string,
+country string,
+lat double,
+long double
+)
+row format delimited
+fields terminated by ','
+lines terminated by '\n'
+stored as textfile
+location '/data/steven_dir/project/airtraffic_control/airports_1_and_2'
+TBLPROPERTIES ("skip.header.line.count"="1");
+
+--load data airports_2 in table above--
+LOAD DATA LOCAL INPATH '/sollers/sollers/big_data_eng/airtraffic_control/datasets/dimensions/airports_2.csv' INTO TABLE steven_db.airports_1_and_2;
+
+--load data airports_1 in table above--
+sqoop import --connect jdbc:mysql://54.165.245.120/Airline \
+--username temp \
+--password temp \
+--table Airports_1 \
+--m 1 \
+--delete-target-dir \
+--target-dir /data/steven_dir/project/airtraffic_control/Airports_1_and_2 \
+--hive-import \
+--create-hive-table \
+--hive-table steven_db.Airports_1_and_2
+
+
+
+
+
+
+-----------------staging table years 2003-2007----------------parquet, bucket by day 15 buckets, partioned by year, month
+CREATE EXTERNAL TABLE steven_db.airtraffic_control_2003_to_2007 (
+`DayofMonth` int,
+`DayOfWeek` int, 
+`DepTime` int, 
+`CRSDepTime` int, 
+`ArrTime` int, 
+`CRSArrTime` int,
+`UniqueCarrier` string, 
+`FlightNum` int, 
+`TailNum` string, 
+`ActualElapsedTime` int, 
+`CRSElapsedTime` int, 
+`AirTime` int, 
+`ArrDelay` int, 
+`DepDelay` int, 
+`Origin` string, 
+`Dest` string,
+`Distance` int, 
+`TaxiIn` int, 
+`TaxiOut` int, 
+`Cancelled` string, 
+`CancellationCode` string, 
+`Diverted` string, 
+`CarrierDelay` string, 
+`WeatherDelay` string, 
+`NASDelay` string, 
+`SecurityDelay` string, 
+`LateAircraftDelay` string
+)
+PARTITIONED BY (Year int, Month string)
+CLUSTERED BY (DayofMonth) INTO 15 BUCKETS 
+STORED AS PARQUET
+LOCATION '/data/steven_dir/project/airline_2003_to_2007'
+
+TBLPROPERTIES ("skip.header.line.count"="1");
+
+
+
+
+
+
+
+
+
+
+
+
+-------------load 2003-2007 into staging area-------
+insert into table airtraffic_control_2003_to_2007 Partition(year,month) 
+select DayofMonth, 
+DayOfWeek, 
+DepTime, 
+CRSDepTime,
+ArrTime,
+CRSArrTime, 
+UniqueCarrier,
+FlightNum,
+TailNum,
+ActualElapsedTime, 
+CRSElapsedTime,
+AirTime, 
+ArrDelay,
+DepDelay, 
+Origin,
+Dest, 
+Distance,
+TaxiIn, 
+TaxiOut,
+Cancelled, 
+CancellationCode,
+Diverted,
+CarrierDelay, 
+WeatherDelay, 
+NASDelay,
+SecurityDelay, 
+LateAircraftDelay,
+Year,
+Month FROM airtraffic_2003_2004 where year = 2003;
+
+
+
+insert into table airtraffic_control_2003_to_2007 Partition(year,month) 
+select DayofMonth, 
+DayOfWeek, 
+DepTime, 
+CRSDepTime,
+ArrTime,
+CRSArrTime, 
+UniqueCarrier,
+FlightNum,
+TailNum,
+ActualElapsedTime, 
+CRSElapsedTime,
+AirTime, 
+ArrDelay,
+DepDelay, 
+Origin,
+Dest, 
+Distance,
+TaxiIn, 
+TaxiOut,
+Cancelled, 
+CancellationCode,
+Diverted,
+CarrierDelay, 
+WeatherDelay, 
+NASDelay,
+SecurityDelay, 
+LateAircraftDelay,
+Year,
+Month FROM airtraffic_2003_2004 where year = 2004;
+
+
+
+
+
+
+
+insert into table airtraffic_control_2003_to_2007 Partition(year,month) 
+select DayofMonth, 
+DayOfWeek, 
+DepTime, 
+CRSDepTime,
+ArrTime,
+CRSArrTime, 
+UniqueCarrier,
+FlightNum,
+TailNum,
+ActualElapsedTime, 
+CRSElapsedTime,
+AirTime, 
+ArrDelay,
+DepDelay, 
+Origin,
+Dest, 
+Distance,
+TaxiIn, 
+TaxiOut,
+Cancelled, 
+CancellationCode,
+Diverted,
+CarrierDelay, 
+WeatherDelay, 
+NASDelay,
+SecurityDelay, 
+LateAircraftDelay,
+Year,
+Month FROM airtraffic_control_2005;
+
+
+
+
+
+
+insert into table airtraffic_control_2003_to_2007 Partition(year,month) 
+select DayofMonth, 
+DayOfWeek, 
+DepTime, 
+CRSDepTime,
+ArrTime,
+CRSArrTime, 
+UniqueCarrier,
+FlightNum,
+TailNum,
+ActualElapsedTime, 
+CRSElapsedTime,
+AirTime, 
+ArrDelay,
+DepDelay, 
+Origin,
+Dest, 
+Distance,
+TaxiIn, 
+TaxiOut,
+Cancelled, 
+CancellationCode,
+Diverted,
+CarrierDelay, 
+WeatherDelay, 
+NASDelay,
+SecurityDelay, 
+LateAircraftDelay,
+Year,
+Month FROM airtraffic_control_2006;
+
+
+
+
+
+
+
+insert into table airtraffic_control_2003_to_2007 Partition(year,month) 
+select DayofMonth, 
+DayOfWeek, 
+DepTime, 
+CRSDepTime,
+ArrTime,
+CRSArrTime, 
+UniqueCarrier,
+FlightNum,
+TailNum,
+ActualElapsedTime, 
+CRSElapsedTime,
+AirTime, 
+ArrDelay,
+DepDelay, 
+Origin,
+Dest, 
+Distance,
+TaxiIn, 
+TaxiOut,
+Cancelled, 
+CancellationCode,
+Diverted,
+CarrierDelay, 
+WeatherDelay, 
+NASDelay,
+SecurityDelay, 
+LateAircraftDelay,
+Year,
+Month FROM airtraffic_control_2007;
+
+LOAD DATA LOCAL INPATH '/sollers/sollers/big_data_eng/airtraffic_control/datasets/facts/2006.csv' insert INTO TABLE steven_db.airtraffic_control_2003_to_2007;
+LOAD DATA LOCAL INPATH '/sollers/sollers/big_data_eng/airtraffic_control/datasets/facts/2007.csv' INTO TABLE steven_db.airtraffic_control_2003_to_2007;
+
+
+
+
+
+
+
+------------2008 staging table------------
+CREATE EXTERNAL TABLE steven_db.airline_2003_to_2008_latest60months (
+`DayofMonth` int,
+`DayOfWeek` int, 
+`DepTime` int, 
+`CRSDepTime` int, 
+`ArrTime` int, 
+`CRSArrTime` int,
+`UniqueCarrier` string, 
+`FlightNum` int, 
+`TailNum` string, 
+`ActualElapsedTime` int, 
+`CRSElapsedTime` int, 
+`AirTime` int, 
+`ArrDelay` int, 
+`DepDelay` int, 
+`Origin` string, 
+`Dest` string,
+`Distance` int, 
+`TaxiIn` int, 
+`TaxiOut` int, 
+`Cancelled` string, 
+`CancellationCode` string, 
+`Diverted` string, 
+`CarrierDelay` string, 
+`WeatherDelay` string, 
+`NASDelay` string, 
+`SecurityDelay` string, 
+`LateAircraftDelay` string
+)
+PARTITIONED BY (Year int, Month string)
+CLUSTERED BY (DayofMonth) INTO 15 BUCKETS 
+STORED AS PARQUET
+LOCATION '/data/steven_dir/project/airline_2003_to_2008_latest60months'
+
+TBLPROPERTIES ("skip.header.line.count"="1");
+
+
+
+
+
+
+
+-----------load data into 2003-2008 staging table-------------
+
+
+
+insert into table airline_2003_to_2008_latest60months Partition(year,month) 
+select DayofMonth, 
+DayOfWeek, 
+DepTime, 
+CRSDepTime,
+ArrTime,
+CRSArrTime, 
+UniqueCarrier,
+FlightNum,
+TailNum,
+ActualElapsedTime, 
+CRSElapsedTime,
+AirTime, 
+ArrDelay,
+DepDelay, 
+Origin,
+Dest, 
+Distance,
+TaxiIn, 
+TaxiOut,
+Cancelled, 
+CancellationCode,
+Diverted,
+CarrierDelay, 
+WeatherDelay, 
+NASDelay,
+SecurityDelay, 
+LateAircraftDelay,
+Year,
+Month FROM airtraffic_2003_2004 where year = 2003;
+
+
+
+insert into table airline_2003_to_2008_latest60months Partition(year,month) 
+select DayofMonth, 
+DayOfWeek, 
+DepTime, 
+CRSDepTime,
+ArrTime,
+CRSArrTime, 
+UniqueCarrier,
+FlightNum,
+TailNum,
+ActualElapsedTime, 
+CRSElapsedTime,
+AirTime, 
+ArrDelay,
+DepDelay, 
+Origin,
+Dest, 
+Distance,
+TaxiIn, 
+TaxiOut,
+Cancelled, 
+CancellationCode,
+Diverted,
+CarrierDelay, 
+WeatherDelay, 
+NASDelay,
+SecurityDelay, 
+LateAircraftDelay,
+Year,
+Month FROM airtraffic_2003_2004 where year = 2004;
+
+
+
+
+
+
+
+insert into table airline_2003_to_2008_latest60months Partition(year,month) 
+select DayofMonth, 
+DayOfWeek, 
+DepTime, 
+CRSDepTime,
+ArrTime,
+CRSArrTime, 
+UniqueCarrier,
+FlightNum,
+TailNum,
+ActualElapsedTime, 
+CRSElapsedTime,
+AirTime, 
+ArrDelay,
+DepDelay, 
+Origin,
+Dest, 
+Distance,
+TaxiIn, 
+TaxiOut,
+Cancelled, 
+CancellationCode,
+Diverted,
+CarrierDelay, 
+WeatherDelay, 
+NASDelay,
+SecurityDelay, 
+LateAircraftDelay,
+Year,
+Month FROM airtraffic_control_2005;
+
+
+
+
+
+
+insert into table airline_2003_to_2008_latest60months Partition(year,month) 
+select DayofMonth, 
+DayOfWeek, 
+DepTime, 
+CRSDepTime,
+ArrTime,
+CRSArrTime, 
+UniqueCarrier,
+FlightNum,
+TailNum,
+ActualElapsedTime, 
+CRSElapsedTime,
+AirTime, 
+ArrDelay,
+DepDelay, 
+Origin,
+Dest, 
+Distance,
+TaxiIn, 
+TaxiOut,
+Cancelled, 
+CancellationCode,
+Diverted,
+CarrierDelay, 
+WeatherDelay, 
+NASDelay,
+SecurityDelay, 
+LateAircraftDelay,
+Year,
+Month FROM airtraffic_control_2006;
+
+
+
+
+
+
+
+insert into table airline_2003_to_2008_latest60months Partition(year,month) 
+select DayofMonth, 
+DayOfWeek, 
+DepTime, 
+CRSDepTime,
+ArrTime,
+CRSArrTime, 
+UniqueCarrier,
+FlightNum,
+TailNum,
+ActualElapsedTime, 
+CRSElapsedTime,
+AirTime, 
+ArrDelay,
+DepDelay, 
+Origin,
+Dest, 
+Distance,
+TaxiIn, 
+TaxiOut,
+Cancelled, 
+CancellationCode,
+Diverted,
+CarrierDelay, 
+WeatherDelay, 
+NASDelay,
+SecurityDelay, 
+LateAircraftDelay,
+Year,
+Month FROM airtraffic_control_2007;
+
+LOAD DATA LOCAL INPATH '/sollers/sollers/big_data_eng/airtraffic_control/datasets/facts/2006.csv' insert INTO TABLE steven_db.airtraffic_control_2003_to_2007;
+LOAD DATA LOCAL INPATH '/sollers/sollers/big_data_eng/airtraffic_control/datasets/facts/2007.csv' INTO TABLE steven_db.airtraffic_control_2003_to_2007;
+
+
+
+
+insert into table airline_2003_to_2008_latest60months Partition(year,month) 
+select DayofMonth, 
+DayOfWeek, 
+DepTime, 
+CRSDepTime,
+ArrTime,
+CRSArrTime, 
+UniqueCarrier,
+FlightNum,
+TailNum,
+ActualElapsedTime, 
+CRSElapsedTime,
+AirTime, 
+ArrDelay,
+DepDelay, 
+Origin,
+Dest, 
+Distance,
+TaxiIn, 
+TaxiOut,
+Cancelled, 
+CancellationCode,
+Diverted,
+CarrierDelay, 
+WeatherDelay, 
+NASDelay,
+SecurityDelay, 
+LateAircraftDelay,
+Year,
+Month FROM airtraffic_control_2008;
+
+
+
+
+
+
+--------------remove 2003 data from 2003-2008 table---------------
+
+
+/////////////////////drop partition command
+
+ALTER TABLE steven_db.airline_2003_to_2008_latest60months DROP IF EXISTS PARTITION (year=2003);
+
+
+
+
+----doesnt work----
+
+ec2-35-173-122-99.compute-1.amazonaws.com
+cd /tmp
+
+klist -kt hbase.keytab
+copy the principal name
+
+kinit -kt hbase.keytab hbase/ec2-35-173-122-99.compute-1.amazonaws.com@HADOOP.NET
+
+hbase org.apache.hadoop.hbase.mapreduce.ImportTsv -Dimporttsv.separator=',' -Dimporttsv.columns="HBASE_ROW_KEY,CF_TIME_AND_DISTANCE:Year,CF_TIME_AND_DISTANCE:Month, CF_TIME_AND_DISTANCE:DayofMonth, CF_TIME_AND_DISTANCE:DayOfWeek, CF_TIME_AND_DISTANCE:DepTime, CF_TIME_AND_DISTANCE:CRSDepTime,  CF_TIME_AND_DISTANCE:ArrTime, CF_TIME_AND_DISTANCE:CRSArrTime, CF_AIRLINE:UniqueCarrier, CF_AIRLINE:FlightNum, CF_AIRLINE:TailNum, CF_TIME_AND_DISTANCE:ActualElapsedTime, CF_TIME_AND_DISTANCE:CRSElapsedTime, CF_TIME_AND_DISTANCE:AirTime, CF_TIME_AND_DISTANCE:ArrDelay, CF_TIME_AND_DISTANCE:DepDelay, CF_AIRLINE:Origin, CF_AIRLINE:Dest, CF_TIME_AND_DISTANCE:Distance, CF_TIME_AND_DISTANCE:TaxiIn, CF_TIME_AND_DISTANCE:TaxiOut, CF_WEATHER:Cancelled, CF_WEATHER:CancellationCode, CF_WEATHER:Diverted, CF_TIME_AND_DISTANCE:CarrierDelay, CF_TIME_AND_DISTANCE:WeatherDelay, CF_TIME_AND_DISTANCE:NASDelay, CF_TIME_AND_DISTANCE:SecurityDelay, CF_TIME_AND_DISTANCE:LateAircraftDelay" steven:airtraffic_control_2003_to_2007/data/steven_dir/project/airtraffic_control/airtraffic_control_2005/airtraffic_control_2005.csv
+
+
+
+
+
+
+
+--LOAD DATA INTO PIG
+
+--
+
+
+orders_raw = LOAD '/tmp/pig/input/Orders.csv' USING PigStorage(',') as (SNo:int, SalesOrderID:chararray, ProductName: chararray,
+
+ProdCategory:chararray, Qty:int,UnitPrice:float,CustID:int,FirstName:chararray,LastName:chararray,City:chararray,State:chararray,ZipCode:chararray);
+
+
+
+-- Extract Customer Info
+
+customer_details = FOREACH orders_raw generate CustID,FirstName,LastName,City,State,ZipCode;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
